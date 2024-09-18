@@ -1,0 +1,184 @@
+function q_align = mainQuaternionSystem(firstAlign, secondAlign, firstRef, secondRef)
+    % Main function to calculate the alignment quaternion between different reference and alignment vectors
+
+    % Switch 1: 
+    q_a2b =  quaternionBetweenVectors(firstAlign, firstRef);
+    
+    % Switch 2: 
+    vec = compare_logic(firstAlign, secondAlign, firstRef, secondRef);
+    
+    % Switch 3:
+    r_b_1 = vectorProjection(secondAlign, firstAlign);
+    r_b_2 = vectorProjection(secondRef, firstRef);
+    vec_rot = quaternionRotation(q_a2b, r_b_2);
+    q_a2b_2 = quaternionBetweenVectors(r_b_1, vec_rot);
+
+    q_r = quatmultiply(q_a2b, q_a2b_2);
+    
+    % Switch logic to select the final quaternion
+    if vec == 1
+        q_align = q_a2b;
+    else
+        q_align = q_r;
+    end
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function q_a2b = quaternionBetweenVectors(r_a, r_b)
+    % Function to compute the quaternion between two vectors r_a and r_b
+    
+    r_a_dot_r_b = dot(r_a, r_b);
+    norm_r_a = norm(r_a);
+    norm_r_b = norm(r_b);
+    
+    % Compute the scalar part of the quaternion
+    q_0 = r_a_dot_r_b + sqrt(norm_r_a^2 * norm_r_b^2);
+    
+    % Compute the vector part using the cross product
+    q_cross = cross(r_a, r_b);
+    
+    % Calculate an orthogonal vector of r_a
+    u_orth = orthogonalVector(r_a);
+    
+    % Perform checkParallel
+    status_result = checkParallel(r_a, r_b);
+    
+    % Switch logic: use q_cross if status_result is non-one, otherwise use u_orth
+    if status_result ~= -1
+        q_switch_output = q_cross;
+    else
+        q_switch_output = u_orth;
+    end
+    
+    % Combine scalar and vector parts into the quaternion
+    q = [q_0, q_switch_output];
+    
+    % Normalize the quaternion using quatnorm
+    q_a2b = quatnorm(q);
+    
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function u_orth = orthogonalVector(u)
+    % Compute an orthogonal vector to the input vector u
+    
+    u1 = u(1); u2 = u(2); u3 = u(3);
+    
+    % Create inputs for the switch logic
+    input1 = [-u2, u1, 0];
+    input3 = [0, -u3, u2];
+    
+    % Switch logic based on comparison of vector components
+    if u1 > u3
+        switch_output = input1;
+    else
+        switch_output = input3;
+    end
+    
+    % Cross product using the selected output
+    u_orth = cross(u, switch_output);
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function status = checkParallel(r_a, r_b)
+    % Check if vectors are parallel, anti-parallel, or not parallel
+    
+    r_a_dot_r_b = dot(r_a, r_b);
+    norm_r_a = norm(r_a);
+    norm_r_b = norm(r_b);
+    
+    cos_theta = r_a_dot_r_b / sqrt(norm_r_a * norm_r_b);
+    
+    if abs(cos_theta + 1) < 1e-6
+        status = 1;  % Parallel
+    elseif abs(cos_theta - 1) < 1e-6
+        status = -1;  % Opposite Parallel
+    else
+        status = 0;  % Not Parallel
+    end
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function q_norm = quatnorm(q)
+    % Normalize the quaternion using the norm function
+    
+    q_norm = q / norm(q);
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function r_b = vectorProjection(vec1, vec2)
+    % Perform cross product operation with two input vectors
+    
+    vec_result = cross(vec2, vec1);
+    
+    r_b = cross(vec_result, vec2);
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function vec_rot = quaternionRotation(q, vec)
+    % Normalize the quaternion q before use
+    q = quatnorm(q); % Normalize quaternion
+
+    % Extract quaternion components
+    q1 = q(1);
+    q2 = q(2);
+    q3 = q(3);
+    q4 = q(4);
+
+    % Extract vector components
+    vec1 = vec(1);
+    vec2 = vec(2);
+    vec3 = vec(3);
+
+    % Calculate V1
+    term1_v1 = 0.5 - q4 * q4 - q3 * q3;
+    term1_v1 = 2 * term1_v1 * vec1;
+    term2_v1 = q2 * q3 + q1 * q4;
+    term2_v1 = 2 * term2_v1 * vec2;
+    term3_v1 = -q1 * q3 + q2 * q4;
+    term3_v1 = 2 * term3_v1 * vec3;
+    V1 = term1_v1 + term2_v1 + term3_v1;
+
+    % Calculate V2
+    term1_v2 = q2 * q3 - q1 * q4;
+    term1_v2 = 2 * term1_v2 * vec1;
+    term2_v2 = 0.5 - q2 * q2 - q4 * q4;
+    term2_v2 = 2 * term2_v2 * vec2;
+    term3_v2 = q1 * q2 + q3 * q4;
+    term3_v2 = 2 * term3_v2 * vec3;
+    V2 = term1_v2 + term2_v2 + term3_v2;
+
+    % Calculate V3
+    term1_v3 = q2 * q4 + q1 * q3;
+    term1_v3 = 2 * term1_v3 * vec1;
+    term2_v3 = q3 * q4 - q1 * q2;
+    term2_v3 = 2 * term2_v3 * vec2;
+    term3_v3 = 0.5 - q2 * q2 - q3 * q3;
+    term3_v3 = 2 * term3_v3 * vec3;
+    V3 = term1_v3 + term2_v3 + term3_v3;
+
+    % Combine V1, V2, V3 to form vec_rot
+    vec_rot = [V1, V2, V3];
+end
+
+%----------------------------------------------------------------------------------------------------
+
+function vec = compare_logic(firstAlign, secondAlign, firstRef, secondRef)
+    % Comparison logic to check status between vectors
+    
+    vec_1 = checkParallel(firstAlign, secondAlign);  
+    vec_2 = checkParallel(firstRef, secondRef);    
+
+    % If either vec_1 or vec_2 is ~= 0, set vec to true (1), otherwise set vec to false (0)
+    if vec_1 ~= 0 || vec_2 ~= 0
+        vec = 1;
+    else
+        vec = 0;
+    end
+end
